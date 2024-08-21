@@ -1,5 +1,3 @@
-import itertools
-import operator
 import os
 
 from . import data
@@ -92,6 +90,11 @@ def commit (message):
     data.set_HEAD (commit_oid)
 
     return commit_oid
+
+def checkout(commit_oid):
+    commit = get_commit(commit_oid)
+    read_tree(commit.tree)
+    data.set_HEAD(commit_oid)
 
 Commit = namedtuple('Commit', ['tree','parent','message'])
 
