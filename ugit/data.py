@@ -1,5 +1,5 @@
 import hashlib
-from typing import Optional
+from typing import Optional, Tuple, Generator
 import os
 
 # Initialize the GIT directory
@@ -18,20 +18,35 @@ def hash_object (data: bytes, type_: str = 'blob') -> str:
         out.write (obj)
     return oid
 
-# Setters and Getters for HEAD
-def set_HEAD (commit_oid: str) -> None:
-    with open(f'{GIT_DIR}/HEAD', 'w') as f:
+# Setters and Getters for Refs
+def update_ref(ref: str, commit_oid: str) -> None:
+    ref_path = f'{GIT_DIR}/{ref}'
+    os.makedirs(os.path.dirname(ref_path), exist_ok=True)
+    with open(ref_path, 'w') as f:
         f.write(commit_oid)
 
 # Get the HEAD commit OID
-def get_HEAD() -> Optional[str]:
-    if os.path.isfile(f'{GIT_DIR}/HEAD'):
-        with open(f'{GIT_DIR}/HEAD') as f:
+def get_ref(ref: str) -> Optional[str]:
+    ref_path = f'{GIT_DIR}/{ref}'
+    if os.path.isfile(ref_path):
+        with open(ref_path) as f:
             return f.read().strip()
+
+# Create iter_refs() function
+def iter_refs(): 
+    refs = ['HEAD']
+
+    for root, _, filenames in os.walk(f'{GIT_DIR}/refs/'):
+        root = root.replace('\\', '/').replace(GIT_DIR, '')[1:]
+        refs.extend(f'{root}/{name}' for name in filenames)
+
+    for refname in refs:
+        yield refname, get_ref(refname)
 
 # Get the object from the OID
 def get_object (oid: str, expected: Optional[str] = 'blob') -> bytes:
     # Open the object file in binary mode
+    # with open (f'{GIT_DIR}/objects/{oid}', 'rb') as f:
     with open (f'{GIT_DIR}/objects/{oid}', 'rb') as f:
         obj = f.read ()
 

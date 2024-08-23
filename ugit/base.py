@@ -1,4 +1,6 @@
 import os
+import string
+from typing import Optional
 
 from . import data
 from collections import namedtuple
@@ -117,7 +119,7 @@ def commit (message: str) -> str:
     # Get the current tree and get the OID of the tree
     commit = f'tree {write_tree ()}\n'
     # Get the HEAD commit OID
-    HEAD = data.get_HEAD ()
+    HEAD = data.get_ref('HEAD')
     # If the HEAD exists, add it to the commit object
     if HEAD:
         commit += f'parent {HEAD}\n'
@@ -130,7 +132,8 @@ def commit (message: str) -> str:
     # Hash the commit object and set the HEAD to the new commit OID (using .encode() to convert the string to bytes)
     commit_oid = data.hash_object (commit.encode (), 'commit')
     # Set the HEAD to the new commit OID
-    data.set_HEAD (commit_oid)
+    # data.set_HEAD (commit_oid)
+    data.update_ref('HEAD', commit_oid)
 
     # Return the commit OID
     return commit_oid
@@ -141,7 +144,12 @@ def checkout(commit_oid: str) -> None:
     # Use the tree object from the commit object to update the working directory
     read_tree(commit.tree)
     # Update HEAD to the new commit
-    data.set_HEAD(commit_oid)
+    data.update_ref('HEAD', commit_oid)
+
+# create_tag function to create a tag for each commit (a one-to-one mapping between a commit and a tag)
+def create_tag(name: str, oid: str) -> None:
+    # Update the ref to the OID
+    data.update_ref(f'refs/tags/{name}', oid)
 
 # Named tuple to store the commit object (tree, parent, message)
 Commit = namedtuple('Commit', ['tree','parent','message'])
@@ -178,6 +186,46 @@ def get_commit(commit_oid: str) -> Commit:
     message = '\n'.join(lines[len(message_lines):])
     # Return the Commit object (nameTuple) (can be outside the function as well, but it's better to keep it here)
     return Commit(tree=tree, parent=parent, message=message)
+
+# Get the commit object from the ref
+def iter_commits_and_parents(oids):
+    oids = set(oids)
+    visited = set()
+
+    while oids:
+        oid = oids.pop()
+        if not oid or oid in visited:
+            continue
+        visited.add(oid)
+        yield oid
+
+        commit = get_commit(oid)
+        oids.add(commit.parent)
+
+# Get_oid function to get the OID of a ref
+def get_oid(name: str) -> Optional[str]:
+
+    if name == '@': 
+        name = 'HEAD'
+
+    # Name is ref
+    ref_directories_to_search = [
+            f'{name}',
+            f'refs/{name}',
+            f'refs/tags/{name}',
+            f'refs/heads/{name}',
+    ]
+    # Iterate over the ref directories
+    for ref in ref_directories_to_search:
+        if data.get_ref(ref):
+            return data.get_ref(ref)
+
+    # If the Name is SHA-1
+    is_hex = all(c in string.hexdigits for c in name)
+    if len(name) == 40 and is_hex:
+        return name
+    
+    assert False, f'Unknown name {name}'
 
 # Ignore the files in the .ugit directory
 def is_ignored (path: str) -> bool:

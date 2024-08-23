@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+import subprocess
 
 # Import the required modules
 from . import base
@@ -23,6 +24,8 @@ def parse_args ():
     commands = parser.add_subparsers (dest='command')
     commands.required = True
 
+    oid = base.get_oid
+
     # Add the commands
     # Add the init command
     init_parser = commands.add_parser ('init')
@@ -36,7 +39,7 @@ def parse_args ():
     # Add the cat-file command
     cat_file_parser = commands.add_parser ('cat-file')
     cat_file_parser.set_defaults (func=cat_file)
-    cat_file_parser.add_argument ('object')
+    cat_file_parser.add_argument ('object', type=oid)
 
     # Add the write-tree command
     write_tree_parser = commands.add_parser ('write-tree')
@@ -45,7 +48,7 @@ def parse_args ():
     # Add the read-tree command
     read_tree_parser = commands.add_parser ('read-tree')
     read_tree_parser.set_defaults (func=read_tree)
-    read_tree_parser.add_argument ('tree')
+    read_tree_parser.add_argument ('tree', type=oid)
 
     # Add the commit command
     commit_parser = commands.add_parser ('commit')
@@ -55,12 +58,22 @@ def parse_args ():
     # Add the log command
     log_parser = commands.add_parser('log')
     log_parser.set_defaults(func=log)
-    log_parser.add_argument('oid', nargs='?')
+    log_parser.add_argument('oid', nargs='?', type=oid, default='@')
 
     # Add the checkout command
     checkout_parser = commands.add_parser('checkout')
     checkout_parser.set_defaults(func=checkout)
-    checkout_parser.add_argument('commit_oid')
+    checkout_parser.add_argument('commit_oid', type=oid)
+
+    # Add the tag parser
+    tag_parser = commands.add_parser('tag')
+    tag_parser.set_defaults(func=tag)
+    tag_parser.add_argument('name')
+    tag_parser.add_argument('oid', nargs='?', type=oid, default='@')
+
+    # Add a k parser
+    k_parser = commands.add_parser('k')
+    k_parser.set_defaults(func=k)
 
     # Return the parsed arguments
     return parser.parse_args()
@@ -95,7 +108,7 @@ def commit(args: argparse.Namespace) -> None:
 
 # Log the commits
 def log(args: argparse.Namespace) -> None:
-    oid = args.oid or data.get_HEAD() # If no OID is provided, get the HEAD
+    oid = args.oid
     # Loop through the commits
     while oid:
         # Get the commit object
@@ -108,3 +121,33 @@ def log(args: argparse.Namespace) -> None:
 # Checkout the commit
 def checkout(args: argparse.Namespace) -> None:
     base.checkout(args.commit_oid)
+
+# Create a tag
+def tag(args: argparse.Namespace) -> None:
+    base.create_tag(args.name, args.oid)
+
+# Create the k function
+def k(args: argparse.Namespace) -> None:
+    dot = 'digraph commits {\n'
+    # Get the data
+    oids = set()
+    # Loop through the refs
+    for refname, ref in data.iter_refs():
+        dot += f'"{refname}" [shape=note]\n'
+        dot += f'"{refname}" -> "{ref}"\n'
+        oids.add(ref)
+    # Loop through the commits
+
+    for oid in base.iter_commits_and_parents({oid for oid in oids}):
+        commit = base.get_commit(oid)
+        dot += f'"{oid}" [shape=box style=filled label="{oid[:10]}"]\n'
+        if commit.parent:
+            dot += f'"{oid}" -> "{commit.parent}"\n'
+
+    dot += '}'
+    print(dot)
+    
+    with subprocess.Popen(['dot', '-Tpng', '-o', 'output.png'], stdin=subprocess.PIPE) as proc:
+        proc.communicate(dot.encode())
+
+    print("Graph saved as output.png")
